@@ -24,6 +24,14 @@ interface Props {
   opponent: { id: string; username: string };
 }
 
+const SHIP_ICONS: Record<string, string> = {
+  'Carrier': 'https://api.iconify.design/mdi:ferry.svg?color=white',
+  'Battleship': 'https://api.iconify.design/mdi:ship.svg?color=white',
+  'Destroyer': 'https://api.iconify.design/mdi:anchor.svg?color=white',
+  'Submarine': 'https://api.iconify.design/mdi:submarine.svg?color=white',
+  'Patrol Boat': 'https://api.iconify.design/mdi:sail-boat.svg?color=white',
+};
+
 export default function Game({ socket, roomId, player, opponent }: Props) {
   const [board, setBoard] = useState<(string | null)[][]>(Array(10).fill(null).map(() => Array(10).fill(null)));
   const [opponentBoard, setOpponentBoard] = useState<(string | null)[][]>(Array(10).fill(null).map(() => Array(10).fill(null)));
@@ -168,6 +176,59 @@ export default function Game({ socket, roomId, player, opponent }: Props) {
     socket.emit('playerReady', { roomId, ships: shipsData });
   };
 
+  const renderGridWithCoordinates = (
+    gridData: (string | null)[][],
+    isOpponent: boolean,
+    onCellClick: (r: number, c: number) => void,
+    onMouseEnter?: (r: number, c: number) => void,
+    onMouseLeave?: () => void,
+    locked?: boolean
+  ) => {
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+
+    return (
+      <div className={`${styles.gridContainer} ${locked ? styles.lockedGrid : ''}`}>
+        <div className={styles.grid}>
+          {/* Top-left empty corner */}
+          <div className={styles.coordCell}></div>
+          
+          {/* Column letters */}
+          {letters.map(letter => (
+            <div key={letter} className={styles.coordCell}>{letter}</div>
+          ))}
+
+          {gridData.map((row, r) => (
+            <div style={{ display: 'contents' }} key={`row-${r}`}>
+              {/* Row number */}
+              <div className={styles.coordCell}>{r + 1}</div>
+              
+              {/* Actual grid cells */}
+              {row.map((cell, c) => {
+                const isHovered = hoveredCells?.cells.some(([hr, hc]) => hr === r && hc === c);
+                const hoverClass = isHovered ? (hoveredCells?.isValid ? styles.hoverValid : styles.hoverInvalid) : '';
+                const isLastMove = lastMove?.r === r && lastMove?.c === c && (!isOpponent ? turn === socket.id : turn !== socket.id);
+                
+                return (
+                  <div
+                    key={`${r}-${c}`}
+                    className={`${styles.cell} ${cell && cell !== 'hit' && cell !== 'miss' && !isOpponent ? styles.ship : ''} ${cell === 'hit' ? styles.hit : ''} ${cell === 'miss' ? styles.miss : ''} ${hoverClass} ${isLastMove ? styles.lastMove : ''}`}
+                    onClick={() => onCellClick(r, c)}
+                    onMouseEnter={() => onMouseEnter?.(r, c)}
+                    onMouseLeave={() => onMouseLeave?.()}
+                  >
+                    {cell && cell !== 'hit' && cell !== 'miss' && !isOpponent && (
+                      <img src={SHIP_ICONS[cell]} className={styles.shipIcon} alt={cell} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={styles.gameContainer}>
       {sunkMessage && <div className={styles.sunkNotification}>{sunkMessage}</div>}
@@ -232,29 +293,14 @@ export default function Game({ socket, roomId, player, opponent }: Props) {
           <div className={styles.boardsContainer}>
             <div className={styles.boardWrapper}>
               <h3>Your Fleet</h3>
-              <div className={`${styles.grid} ${isReady && !gameStarted ? styles.lockedGrid : ''}`}>
-                {board.map((row, r) =>
-                  row.map((cell, c) => {
-                    const isHovered = hoveredCells?.cells.some(([hr, hc]) => hr === r && hc === c);
-                    const hoverClass = isHovered ? (hoveredCells?.isValid ? styles.hoverValid : styles.hoverInvalid) : '';
-                    const isLastMove = lastMove?.r === r && lastMove?.c === c && turn === socket.id;
-
-                    return (
-                      <div
-                        key={`${r}-${c}`}
-                        className={`${styles.cell} ${cell && cell !== 'hit' && cell !== 'miss' ? styles.ship : ''} ${cell === 'hit' ? styles.hit : ''} ${cell === 'miss' ? styles.miss : ''} ${hoverClass} ${isLastMove ? styles.lastMove : ''}`}
-                        onClick={() => handleCellClick(r, c)}
-                        onMouseEnter={() => handleMouseEnter(r, c)}
-                        onMouseLeave={() => setHoveredCells(null)}
-                      >
-                        {cell && cell !== 'hit' && cell !== 'miss' && (
-                          <img src="https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/ship.svg" className={styles.shipIcon} />
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+              {renderGridWithCoordinates(
+                board,
+                false,
+                handleCellClick,
+                handleMouseEnter,
+                () => setHoveredCells(null),
+                isReady && !gameStarted
+              )}
               {!isReady && currentShipIndex === SHIPS.length && (
                 <button onClick={handleReady} className={styles.buttonLarge}>Ready to Battle</button>
               )}
@@ -263,18 +309,11 @@ export default function Game({ socket, roomId, player, opponent }: Props) {
             {gameStarted && (
               <div className={styles.boardWrapper}>
                 <h3>Opponent's Grid</h3>
-                <div className={`${styles.grid} ${turn !== socket.id ? styles.disabledGrid : ''}`}>
-                  {opponentBoard.map((row, r) =>
-                    row.map((cell, c) => {
-                      const isLastMove = lastMove?.r === r && lastMove?.c === c && turn !== socket.id;
-                      return (
-                        <div
-                          key={`${r}-${c}`}
-                          className={`${styles.cell} ${cell === 'hit' ? styles.hit : ''} ${cell === 'miss' ? styles.miss : ''} ${isLastMove ? styles.lastMove : ''}`}
-                          onClick={() => handleAttack(r, c)}
-                        />
-                      );
-                    })
+                <div className={`${turn !== socket.id ? styles.disabledGrid : ''}`}>
+                  {renderGridWithCoordinates(
+                    opponentBoard,
+                    true,
+                    handleAttack
                   )}
                 </div>
               </div>
