@@ -1,66 +1,76 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client';
 
-export default function Home() {
+import { useState, useEffect } from 'react';
+import { useSocket } from '@/hooks/useSocket';
+import Game from '@/components/Game';
+import styles from './page.module.css';
+
+interface Player {
+  id: string;
+  username: string;
+}
+
+export default function Lobby() {
+  const socket = useSocket();
+  const [username, setUsername] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [matchData, setMatchData] = useState<{ roomId: string; players: Player[] } | null>(null);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('matchFound', (data) => {
+      setMatchData(data);
+      setIsSearching(false);
+    });
+
+    return () => {
+      socket.off('matchFound');
+    };
+  }, [socket]);
+
+  const handleFindMatch = () => {
+    if (!username.trim()) return;
+    setIsSearching(true);
+    socket?.emit('findMatch', username);
+  };
+
+  if (matchData && socket) {
+    const player = matchData.players.find(p => p.id === socket.id)!;
+    const opponent = matchData.players.find(p => p.id !== socket.id)!;
+
+    return (
+      <Game 
+        socket={socket} 
+        roomId={matchData.roomId} 
+        player={player} 
+        opponent={opponent} 
+      />
+    );
+  }
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className={styles.container}>
+      <h1>Battleship Multiplayer</h1>
+      {!isSearching ? (
+        <div className={styles.lobbyForm}>
+          <input
+            type="text"
+            placeholder="Enter your nickname"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className={styles.input}
+          />
+          <button onClick={handleFindMatch} className={styles.button}>
+            Find a Match
+          </button>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      ) : (
+        <div className={styles.searching}>
+          <p>Searching for an opponent...</p>
+          <div className={styles.loader}></div>
         </div>
-      </main>
+      )}
     </div>
   );
 }
